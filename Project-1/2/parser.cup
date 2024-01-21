@@ -1,0 +1,127 @@
+/* Simple +/-/* expr language; parser evaluates constant exprs on the fly*/
+/**
+ *  Package and Import Specifications
+ */
+import java_cup.runtime.*;
+import java.io.*;
+
+/**
+ *  Usercode Components
+ */
+parser code {:
+    // Connect this parser to a scanner!
+    Scanner s;
+    Parser(Scanner s){ this.s=s; }
+:}
+
+/* define how to connect to the scanner! */
+scan with {: return s.next_token(); :};
+
+/**
+ *  Symbol Lists
+ */
+
+/* Terminals (tokens returned by the scanner). */
+terminal            PLUS, LPAREN, RPAREN, IF, ELSE, LCURLYBRACKET, RCURLYBRACKET, COMMA, PREF, REV;
+terminal String     STRING_LITERAL, WORDS;        // our scanner provides numbers as strings
+
+
+/*  Non terminals */
+
+non terminal prog, pfunction, funclist, calls, fcall, listdecl, listcall, pardecl, parcall, func, expr, exparam, ifex, revex, prefex, concat;  
+
+/**
+ *  Precedence Declarations
+ */
+precedence left IF, ELSE, PREF;
+precedence left PLUS;
+precedence left LPAREN, RPAREN;
+precedence left REV;
+
+
+/**
+ *  The Grammar Rules
+ */
+
+
+
+
+prog    ::= funclist:fd1 calls:inmain   {:  try{ File f=new File("output/Main.java");                       /*print the main and any function called*/
+                                                FileWriter fl = new FileWriter(f,true);
+                                                BufferedWriter bf = new BufferedWriter(fl);
+                                                PrintWriter pr = new PrintWriter(bf);
+                                                pr.println("public class Main {\n\tpublic static void main(String[] args) {\n" + inmain + "\t}");
+                                                pr.println(fd1);
+                                                pr.println("}");
+                                                pr.close();
+                                                }
+                                            catch (Exception x){    System.out.println("Error in finding folder: output!"); }   :}
+                  
+;                                    
+
+
+pfunction   ::= WORDS:functionname LPAREN listdecl:parameters RPAREN LCURLYBRACKET func:body RCURLYBRACKET  {:  RESULT = "\n\tpublic static String " + functionname + "(" + parameters + ") {\n" + body + "\n\t}";   :} /*returns the functions that aren't main*/                                                        
+            |   WORDS:functionname LPAREN RPAREN LCURLYBRACKET func:body RCURLYBRACKET    {: RESULT = "\n\tpublic static String " + functionname + "() {\n" + body + "\n\t}"; :}
+                                                                                
+;
+
+funclist    ::= pfunction:func    {: RESULT=func ;:}  /*a list that holds the functions*/
+            |   funclist:rest pfunction:func   {: RESULT=rest +""+ func;:}  
+;
+listdecl    ::= pardecl:par {:  RESULT = par;:} /*returns the parameters of functions*/                                                                
+            |   listdecl:parlist COMMA pardecl:par    {:  RESULT = parlist + ", " + par; :}  
+;
+pardecl ::= WORDS:param    {:  RESULT = "String " + param; :}  /*parameter of function*/
+;
+calls   ::= fcall:fc1 calls:c1  {: RESULT =  fc1 + "\n" + c1;:} /*returns the prints of the functions in Main*/                                    
+        |   {: RESULT ="";:}                         
+;
+fcall   ::= WORDS:func_id LPAREN listcall:parlist RPAREN    {: RESULT = "\t\tSystem.out.println(" + func_id + "(" + parlist + "));"; :} /*returns the prints in the body of main*/
+        | WORDS:func_id LPAREN RPAREN   {: RESULT = "\t\tSystem.out.println(" + func_id + "());"; :}
+;
+listcall    ::= parcall:par {:  RESULT = par;:} /*returns the parameters of main*/
+            | listcall:parlist COMMA expr:par   {:  RESULT = parlist + ", " + par; :}  
+;
+parcall     ::= STRING_LITERAL:str  {: RESULT = "\"" + str + "\""; :}   /*parameter of the prints in main*/
+            | WORDS:func_id LPAREN expr:st RPAREN   {: RESULT = func_id + "("+ st +")"; :}
+            | WORDS:func_id LPAREN RPAREN   {: RESULT = func_id + "()"; :}
+;
+
+func   ::= expr:exp {: RESULT = "\t\t" + "return " + exp + ";"; :}  /*returns the expression or null*/
+       |    {: RESULT = "\t\treturn null;"; :}
+;
+
+
+/*if-else */
+ifex    ::= IF LPAREN expr:expr1 RPAREN expr:expr2 ELSE expr:expr3  {: RESULT = "(" + expr1 + " ? " + expr2 + " : " + expr3+")" ; :}
+;
+
+
+/*reverse */
+revex   ::= REV expr:expr1   {:  RESULT = "(new StringBuffer("+expr1+").reverse().toString())" ; :}
+;
+
+/*prefix*/
+prefex  ::= expr:expr1 PREF expr:expr2  {: RESULT = "(("+expr2+")"+".startsWith("+expr1+"))"; :}
+;
+
+/*concat*/
+concat  ::= expr:expr1 PLUS expr:expr2  {: RESULT = expr1 +" + "+ expr2; :}
+;                                                                                
+
+
+expr    ::= WORDS:w exparam:rest                    {: RESULT =   w + rest; :}  /*the allowed exprecions*/
+        | STRING_LITERAL:str                         {: RESULT = "\"" + str + "\""; :}              
+        | concat:con                                 {: RESULT = con; :}
+        | ifex:ifs                                   {: RESULT = ifs; :}
+        | prefex:pref                                {: RESULT = pref; :}
+        | revex:rev                                  {: RESULT = rev; :}
+;
+
+exparam ::= LPAREN expr:ex RPAREN         {: RESULT = "(" + ex + ")"; :}    /*some exprecions might contain () or ( with expresions inside )*/
+        | LPAREN RPAREN                                         {: RESULT = "()"; :}
+        | /* Empty */                                           {: RESULT = ""; :}
+;
+
+
+
